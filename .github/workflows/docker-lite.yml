@@ -19,7 +19,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ✨ 新增步骤：把仓库名转为全小写 ✨
+      # ✨ 关键步骤：把仓库名转为全小写 (Bash 4.0+ 语法) ✨
       - name: Lowercase image name
         run: |
           echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
@@ -35,7 +35,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # 这里使用处理过的小写变量
+          # 使用转换后的小写 IMAGE_NAME
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
