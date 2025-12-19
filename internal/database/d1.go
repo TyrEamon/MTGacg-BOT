@@ -40,21 +40,26 @@ func (d *D1Client) SaveImage(postID, fileID, originFileID, caption, tags, source
 	// 1. 更新本地缓存
 	d.History[postID] = true
 
-	// 2. 构造 SQL
-	sql := `INSERT INTO images (post_id, file_id, origin_id, caption, tags, source, width, height, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	
-	// 注意：D1 HTTP API 的 params 需要对应
-	params := []interface{}{
-		postID,
-		fileID,
-		originFileID,
-		caption,
-		tags,
-		source,
-		width,
-		height,
-		time.Now().Unix(), // timestamp
-	}
+// 注意：
+// 1. 把 post_id 改成 id
+// 2. 把 file_id 改成 file_name (虽然它存的是 fileID字符串)
+// 3. 去掉 source (因为你表里没这个字段)
+// 4. 调整 params 列表
+sql := `INSERT INTO images (id, file_name, origin_id, caption, tags, width, height, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+
+// 参数列表也要跟着减一个 (source)
+params := []interface{}{
+    postID,       // -> id
+    fileID,       // -> file_name
+    originFileID, // -> origin_id
+    caption,      // -> caption
+    tags,         // -> tags
+    // source,    // <--- 删掉这个，因为表里没有
+    width,        // -> width
+    height,       // -> height
+    time.Now().Unix(), // -> created_at
+}
+
 
 	return d.executeSQL(sql, params)
 }
