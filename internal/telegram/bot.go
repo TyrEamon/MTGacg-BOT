@@ -127,7 +127,8 @@ func (h *BotHandler) downloadFile(ctx context.Context, fileID string) ([]byte, e
 
 // 压缩图片辅助函数
 func compressImage(data []byte, targetSize int64) ([]byte, error) {
-	img, format, err := image.Decode(bytes.NewReader(data))
+	// 注意这里中间那个是下划线 _
+	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("decode error: %v", err)
 	}
@@ -137,6 +138,7 @@ func compressImage(data []byte, targetSize int64) ([]byte, error) {
 	height := bounds.Dy()
 
 	if width > 9500 || height > 9500 {
+		log.Printf("📏 Resizing image from %dx%d", width, height)
 		if width > height {
 			img = resize.Resize(9500, 0, img, resize.Lanczos3)
 		} else {
@@ -144,6 +146,7 @@ func compressImage(data []byte, targetSize int64) ([]byte, error) {
 		}
 	}
 
+	log.Printf("📉 Compressing image...")
 	quality := 99
 	for {
 		buf := new(bytes.Buffer)
