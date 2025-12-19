@@ -2,14 +2,14 @@ FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
-# 1. 先复制 go.mod (注意：这里我们暂时不复制 go.sum，因为你还没有)
-COPY go.mod ./
-
-# 2. 关键步骤：下载依赖并自动生成 go.sum
-RUN go mod download && go mod tidy
-
-# 3. 再复制剩下的代码
+# 1. 先把所有文件都复制进去 (简单粗暴，最有效)
 COPY . .
+
+# 2. 现在有了代码，go mod tidy 就能扫描到依赖并生成 go.sum 了
+RUN go mod tidy
+
+# 3. 下载依赖 (其实上一步 tidy 已经下载了，但这步可以确保缓存)
+RUN go mod download
 
 # 4. 编译
 RUN go build -o bot main.go
