@@ -35,9 +35,14 @@ func NewBot(cfg *config.Config, db *database.D1Client) (*BotHandler, error) {
 
 	opts := []bot.Option{
 		bot.WithDefaultHandler(func(ctx context.Context, b *bot.Bot, update *models.Update) {
-			if update.Message == nil {
-				return
-			}
+    // 强制打印日志，看看有没有进来
+    if update.Message != nil {
+        log.Printf("DEBUG: 收到消息 ID=%d Text=%s Photo=%d Doc=%v", 
+            update.Message.ID, 
+            update.Message.Text, 
+            len(update.Message.Photo), 
+            update.Message.Document != nil)
+    }
 			// 只有在 forward 模式下才收集
 			if h.Forwarding {
 				msg := update.Message
