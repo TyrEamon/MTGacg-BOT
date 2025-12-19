@@ -141,7 +141,7 @@ func compressImage(data []byte, targetSize int64) ([]byte, error) {
 		}
 	}
 
-	quality := 99
+	quality := 100
 	for {
 		buf := new(bytes.Buffer)
 		err = jpeg.Encode(buf, img, &jpeg.Options{Quality: quality})
@@ -150,10 +150,10 @@ func compressImage(data []byte, targetSize int64) ([]byte, error) {
 		}
 		compressedData := buf.Bytes()
 		size := int64(len(compressedData))
-		if size <= targetSize || quality <= 40 {
+		if size <= targetSize || quality <= 50 {
 			return compressedData, nil
 		}
-		quality -= 5
+		quality -= 2
 	}
 }
 
