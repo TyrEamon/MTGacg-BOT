@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"my-bot-go/internal/config"
 	"net/http"
 	"time"
