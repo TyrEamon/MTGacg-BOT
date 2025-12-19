@@ -33,51 +33,56 @@ type BotHandler struct {
 func NewBot(cfg *config.Config, db *database.D1Client) (*BotHandler, error) {
 	h := &BotHandler{Cfg: cfg, DB: db}
 
+	// 使用 DefaultHandler 捕获所有消息，确保不漏
 	opts := []bot.Option{
 		bot.WithDefaultHandler(func(ctx context.Context, b *bot.Bot, update *models.Update) {
-    // 强制打印日志，看看有没有进来
-    if update.Message != nil {
-        log.Printf("DEBUG: 收到消息 ID=%d Text=%s Photo=%d Doc=%v", 
-            update.Message.ID, 
-            update.Message.Text, 
-            len(update.Message.Photo), 
-            update.Message.Document != nil)
-    }
-			// 只有在 forward 模式下才收集
-			if h.Forwarding {
-				msg := update.Message
-				log.Printf("📥 收到消息: ID=%d", msg.ID)
+			if update.Message == nil {
+				return
+			}
 
+			msg := update.Message
+			// 🔥 [DEBUG] 强制打印所有收到的消息详情 🔥
+			log.Printf("[DEBUG] 收到消息: ID=%d | User=%d | Forwarding=%v | Photo=%d | Doc=%v", 
+				msg.ID, msg.From.ID, h.Forwarding, len(msg.Photo), msg.Document != nil)
+
+			// 只有在 forward 模式下才走新逻辑
+			if h.Forwarding {
 				// 1. 如果还没有预览图
 				if h.ForwardPreview == nil {
+					// 只要有图或者有文件，就认定为预览图
 					if len(msg.Photo) > 0 || msg.Document != nil {
 						h.ForwardPreview = msg
-						log.Printf("✅ 设定为预览图: %d", msg.ID)
+						log.Printf("✅ [Forward] 设定预览图: %d", msg.ID)
 						
-						// ✨ 增加反馈：收到预览图
 						b.SendMessage(ctx, &bot.SendMessageParams{
 							ChatID: msg.Chat.ID,
-							Text:   "✅ 已获取预览图。\n请继续发送原图文件 (Document)，或者直接发送 /forward_end 结束。",
+							Text:   "✅ 已获取预览图。\n请继续发送【原图文件】，或直接发送 /forward_end 结束。",
 							ReplyParameters: &models.ReplyParameters{MessageID: msg.ID},
 						})
 						return
 					}
 				}
 
-				// 2. 如果预览图已经有了，且这一条是 Document -> 原图
+				// 2. 如果预览图已经有了，且这一条是 Document -> 认定为原图
 				if h.ForwardOriginal == nil && msg.Document != nil {
-					// 确保不是刚才那条预览消息自己
+					// 确保不是预览图自己
 					if h.ForwardPreview != nil && h.ForwardPreview.ID != msg.ID {
 						h.ForwardOriginal = msg
-						log.Printf("✅ 设定为原图文件: %d", msg.ID)
+						log.Printf("✅ [Forward] 设定原图文件: %d", msg.ID)
 						
-						// ✨ 增加反馈：收到原图
 						b.SendMessage(ctx, &bot.SendMessageParams{
 							ChatID: msg.Chat.ID,
 							Text:   "✅ 已获取原图文件。\n请发送 /forward_end 发布。",
 							ReplyParameters: &models.ReplyParameters{MessageID: msg.ID},
 						})
 					}
+				}
+			} else {
+				// 非 Forward 模式，走 Legacy 逻辑
+				// 只有带 Photo 的才处理
+				if len(msg.Photo) > 0 {
+					log.Printf("🔄 [Legacy] 进入手动转发模式")
+					h.handleManual(ctx, b, update)
 				}
 			}
 		}),
@@ -94,19 +99,6 @@ func NewBot(cfg *config.Config, db *database.D1Client) (*BotHandler, error) {
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/save", bot.MatchTypeExact, h.handleSave)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/forward_start", bot.MatchTypePrefix, h.handleForwardStart)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/forward_end", bot.MatchTypeExact, h.handleForwardEnd)
-
-	// 保留老的手动转发逻辑
-	b.RegisterHandler(bot.HandlerTypeMessageText, "", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		if update.Message == nil {
-			return
-		}
-		if h.Forwarding {
-			return
-		}
-		if len(update.Message.Photo) > 0 {
-			h.handleManual(ctx, b, update)
-		}
-	})
 
 	return h, nil
 }
@@ -132,7 +124,6 @@ func (h *BotHandler) downloadFile(ctx context.Context, fileID string) ([]byte, e
 
 // 压缩图片辅助函数
 func compressImage(data []byte, targetSize int64) ([]byte, error) {
-	// 注意这里中间那个是下划线 _
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("decode error: %v", err)
@@ -143,7 +134,6 @@ func compressImage(data []byte, targetSize int64) ([]byte, error) {
 	height := bounds.Dy()
 
 	if width > 9500 || height > 9500 {
-		log.Printf("📏 Resizing image from %dx%d", width, height)
 		if width > height {
 			img = resize.Resize(9500, 0, img, resize.Lanczos3)
 		} else {
@@ -151,7 +141,6 @@ func compressImage(data []byte, targetSize int64) ([]byte, error) {
 		}
 	}
 
-	log.Printf("📉 Compressing image...")
 	quality := 99
 	for {
 		buf := new(bytes.Buffer)
@@ -228,7 +217,7 @@ func (h *BotHandler) handleForwardStart(ctx context.Context, b *bot.Bot, update 
 	h.ForwardPreview = nil
 	h.ForwardOriginal = nil
 
-	log.Printf("🚀 转发模式已开启 (User: %d)", userID)
+	log.Printf("🚀 [Start] 转发模式开启 (User: %d)", userID)
 
 	b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:          msg.Chat.ID,
@@ -264,7 +253,7 @@ func (h *BotHandler) handleForwardEnd(ctx context.Context, b *bot.Bot, update *m
 	var previewFileID, originFileID string
 	var width, height int
 
-	// 1. 如果预览是 Photo (常规图片)
+	// 1. 如果预览是 Photo
 	if len(h.ForwardPreview.Photo) > 0 {
 		srcPhoto := h.ForwardPreview.Photo[len(h.ForwardPreview.Photo)-1]
 		fwdMsg, err := b.SendPhoto(ctx, &bot.SendPhotoParams{
@@ -282,7 +271,7 @@ func (h *BotHandler) handleForwardEnd(ctx context.Context, b *bot.Bot, update *m
 			originFileID = h.ForwardOriginal.Document.FileID
 		}
 	} else if h.ForwardPreview.Document != nil {
-		// 2. 如果预览是 Document (文件) -> 自动下载并生成预览
+		// 2. 如果预览是 Document -> 自动下载
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: msg.Chat.ID, Text: "⏳ 正在处理单文件..."})
 		originFileID = h.ForwardPreview.Document.FileID // 默认原图就是它
 
