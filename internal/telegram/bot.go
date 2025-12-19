@@ -40,26 +40,26 @@ func NewBot(cfg *config.Config, db *database.D1Client) (*BotHandler, error) {
 			}
 			// 只有在 forward 模式下才收集
 			if h.Forwarding {
-				// 1. 如果是 Photo，优先当 Preview
-				if len(update.Message.Photo) > 0 && h.ForwardPreview == nil {
-					h.ForwardPreview = update.Message
-					log.Printf("🖼 收到预览(Photo): %d", update.Message.ID)
-					return
+				msg := update.Message
+				log.Printf("📥 收到消息: ID=%d | Photo=%v | Doc=%v", msg.ID, len(msg.Photo) > 0, msg.Document != nil)
+
+				// 1. 如果还没有预览图，这一条就是预览图！
+				// (不管是 Photo 还是 Document，谁先来谁就是预览)
+				if h.ForwardPreview == nil {
+					// 只有带图或带文件的才算
+					if len(msg.Photo) > 0 || msg.Document != nil {
+						h.ForwardPreview = msg
+						log.Printf("✅ 设定为预览图: %d", msg.ID)
+						return
+					}
 				}
 
-				// 2. 如果是 Document
-				if update.Message.Document != nil {
-					// 如果 Preview 为空，Document 也可以当 Preview
-					if h.ForwardPreview == nil {
-						h.ForwardPreview = update.Message
-						log.Printf("📄 收到预览(Document): %d", update.Message.ID)
-					}
-
-					// 顺便也记录为 Original (双文件模式下用到)
-					// 如果 Preview 已经有了（且不是这条消息自己），那这条一定是 Original
-					if h.ForwardOriginal == nil && h.ForwardPreview != nil && h.ForwardPreview.ID != update.Message.ID {
-						h.ForwardOriginal = update.Message
-						log.Printf("📄 收到原图(Document): %d", update.Message.ID)
+				// 2. 如果预览图已经有了，且这一条是 Document，那就是原图文件！
+				if h.ForwardOriginal == nil && msg.Document != nil {
+					// 确保不是刚才那条预览消息自己
+					if h.ForwardPreview != nil && h.ForwardPreview.ID != msg.ID {
+						h.ForwardOriginal = msg
+						log.Printf("✅ 设定为原图文件: %d", msg.ID)
 					}
 				}
 			}
@@ -156,7 +156,6 @@ func (h *BotHandler) handleSave(ctx context.Context, b *bot.Bot, update *models.
 	if userID != 8040798522 && userID != 6874581126 {
 		return
 	}
-	// 这里其实没啥用了，因为是实时保存，但留个响应也好
 	b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   "✅ Database synced (Realtime mode).",
@@ -214,9 +213,11 @@ func (h *BotHandler) handleForwardStart(ctx context.Context, b *bot.Bot, update 
 	h.ForwardPreview = nil
 	h.ForwardOriginal = nil
 
+	log.Printf("🚀 转发模式已开启 (User: %d)", userID)
+
 	b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:          msg.Chat.ID,
-		Text:            "✅ 转发模式开启。\n请直接发送原图文件 (Document)，Bot 会自动生成预览图。\n完成后发送 /forward_end",
+		Text:            "✅ 转发模式开启。\n支持两种模式：\n1. 单文件模式：只发原图文件 (Bot自动生成预览)\n2. 双文件模式：先发预览图，再发原图文件\n完成后发送 /forward_end",
 		ReplyParameters: &models.ReplyParameters{MessageID: msg.ID},
 	})
 }
